@@ -25,7 +25,8 @@ app.use(express.raw({ type: 'application/json' }));
 
 // Middleware to measure response time for FAQ
 const faqResponseTime = (req, res, next) => {
-  if (req.body?.type === 'faq.query') {
+  const body = req.body ? JSON.parse(req.body.toString()) : null;
+  if (body?.event === 'faq.query') {
     req.startTime = Date.now();
   }
   next();
@@ -56,8 +57,14 @@ app.post('/webhook', async (req, res) => {
       return res.status(403).json({ error: 'Invalid signature' });
     }
 
+    // Extract payload
+    const payload = body.payload;
+    if (!payload) {
+      return res.status(400).json({ error: 'Missing payload' });
+    }
+
     // 2. Check idempotency
-    const txRef = body.tx_ref_3037;
+    const txRef = payload.tx_ref_3037;
     if (!txRef) {
       return res.status(400).json({ error: 'Missing tx_ref_3037' });
     }
@@ -74,8 +81,8 @@ app.post('/webhook', async (req, res) => {
     await redisClient.setEx(idempotencyKey, IDEMPOTENCY_TTL, 'processed');
 
     // 3. Handle refund with limit check
-    if (body.type === 'refund.request') {
-      const refundAmount = body.refund_aed;
+    if (body.event === 'refund.requested') {
+      const refundAmount = payload.refund_aed;
 
       // Validate refund amount exists and is a number
       if (typeof refundAmount !== 'number' || refundAmount < 0) {
@@ -101,7 +108,7 @@ app.post('/webhook', async (req, res) => {
     }
 
     // 4. Handle FAQ queries with <650ms response time
-    if (body.type === 'faq.query') {
+    if (body.event === 'faq.query') {
       const responseTime = Date.now() - req.startTime;
       console.log(`FAQ response time: ${responseTime}ms`);
 
@@ -117,7 +124,7 @@ app.post('/webhook', async (req, res) => {
         'default': 'Thank you for your inquiry. Our team will respond shortly.'
       };
 
-      const answer = faqAnswers[body.question] || faqAnswers['default'];
+      const answer = faqAnswers[payload.question] || faqAnswers['default'];
 
       return res.json({
         status: 'processed',
@@ -130,7 +137,7 @@ app.post('/webhook', async (req, res) => {
     return res.json({
       status: 'processed',
       tx_ref: txRef,
-      message_type: body.type
+      message_type: body.event
     });
 
   } catch (error) {
