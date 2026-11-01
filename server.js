@@ -25,10 +25,7 @@ app.use(express.raw({ type: 'application/json' }));
 
 // Middleware to measure response time for FAQ
 const faqResponseTime = (req, res, next) => {
-  const body = req.body ? JSON.parse(req.body.toString()) : null;
-  if (body?.event === 'faq.query') {
-    req.startTime = Date.now();
-  }
+  req.startTime = Date.now();
   next();
 };
 
